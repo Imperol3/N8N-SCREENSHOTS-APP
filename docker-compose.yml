@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  n8n-scraper:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Add any other env vars here
+    restart: always
