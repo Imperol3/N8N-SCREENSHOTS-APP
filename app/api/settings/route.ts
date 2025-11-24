@@ -4,10 +4,12 @@ export async function GET() {
     try {
         const settings = await db.settings.findFirst();
         if (!settings) {
-            // Return default empty settings
+            // Return default empty settings including Browserless fields
             return Response.json({
                 n8nUrl: '',
                 n8nApiKey: '',
+                browserlessUrl: '',
+                browserlessApiKey: '',
                 email: '',
                 password: '',
                 webhookUrl: '',
@@ -24,13 +26,15 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { n8nUrl, n8nApiKey, email, password, webhookUrl, scheduleCron } = body;
+        const { n8nUrl, n8nApiKey, browserlessUrl, browserlessApiKey, email, password, webhookUrl, scheduleCron } = body;
 
         const settings = await db.settings.upsert({
             where: { id: 1 },
             update: {
                 n8nUrl,
                 n8nApiKey,
+                browserlessUrl,
+                browserlessApiKey,
                 email,
                 password,
                 webhookUrl,
@@ -40,6 +44,8 @@ export async function POST(request: Request) {
                 id: 1,
                 n8nUrl,
                 n8nApiKey,
+                browserlessUrl,
+                browserlessApiKey,
                 email,
                 password,
                 webhookUrl,

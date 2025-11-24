@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import puppeteerCore from 'puppeteer-core';
 import { db } from './db';
 
 interface ScraperOptions {
@@ -30,10 +31,61 @@ export async function runScraper({
         throw new Error("Either workflowUrl or workflowId must be provided");
     }
 
-    const browser = await puppeteer.launch({
-        args: ['--hide-scrollbars', '--incognito', '--no-sandbox'],
-        headless: !showBrowser,
-    });
+    // Fetch settings to determine Browserless configuration
+    const settings = await db.settings.findFirst();
+    let browser;
+    let isBrowserless = false;
+
+
+    if (settings?.browserlessUrl && settings?.browserlessApiKey) {
+        // Try to connect to Browserless if configured
+        try {
+            // Convert http:// to ws:// and https:// to wss:// for WebSocket connection
+            let wsUrl = settings.browserlessUrl;
+            if (wsUrl.startsWith('http://')) {
+                wsUrl = wsUrl.replace('http://', 'ws://');
+            } else if (wsUrl.startsWith('https://')) {
+                wsUrl = wsUrl.replace('https://', 'wss://');
+            }
+
+            const endpoint = `${wsUrl}?token=${settings.browserlessApiKey}`;
+            console.log('[Scraper] Attempting to connect to Browserless:', endpoint);
+            console.log('[Scraper] Connection options:', {
+                browserWSEndpoint: endpoint,
+                timeout: 60000 // 60 second timeout
+            });
+
+            // Use puppeteer-core for remote browser connections
+            browser = await puppeteerCore.connect({
+                browserWSEndpoint: endpoint,
+                protocolTimeout: 60000, // Increase timeout to 60 seconds
+            });
+            isBrowserless = true;
+            console.log('[Scraper] Successfully connected to Browserless');
+        } catch (browserlessError: any) {
+            console.error('[Scraper] Browserless connection failed with details:');
+            console.error('  Error type:', browserlessError.constructor.name);
+            console.error('  Error message:', browserlessError.message);
+            console.error('  Error code:', browserlessError.code);
+            console.warn('[Scraper] Falling back to local Puppeteer');
+
+            // Use puppeteer for local browser
+            browser = await puppeteer.launch({
+                args: ['--hide-scrollbars', '--incognito', '--no-sandbox'],
+                headless: !showBrowser,
+            });
+            isBrowserless = false;
+        }
+    } else {
+        // Fall back to local Puppeteer
+        console.log('[Scraper] Using local Puppeteer (no Browserless configured)');
+        // Use puppeteer for local browser
+        browser = await puppeteer.launch({
+            args: ['--hide-scrollbars', '--incognito', '--no-sandbox'],
+            headless: !showBrowser,
+        });
+        isBrowserless = false;
+    }
 
     try {
         const page = await browser.newPage();
@@ -89,7 +141,6 @@ export async function runScraper({
         });
 
         // Trigger Webhook if configured
-        const settings = await db.settings.findFirst();
         if (settings?.webhookUrl) {
             try {
                 await fetch(settings.webhookUrl, {
@@ -118,6 +169,21 @@ export async function runScraper({
         console.error('Scraper Error:', error);
         throw error;
     } finally {
-        await browser.close();
+        // Properly clean up browser connection
+        try {
+            if (browser) {
+                if (isBrowserless) {
+                    // For Browserless, use disconnect() instead of close()
+                    await browser.disconnect();
+                    console.log('[Scraper] Disconnected from Browserless');
+                } else {
+                    // For local Puppeteer, use close()
+                    await browser.close();
+                    console.log('[Scraper] Closed local browser');
+                }
+            }
+        } catch (closeError) {
+            console.warn('[Scraper] Error during browser cleanup:', closeError);
+        }
     }
 }

@@ -14,6 +14,8 @@ model Settings {
   id           Int      @id @default(1)
   n8nUrl       String   @default("")
   n8nApiKey    String   @default("") // New API Key field
+  browserlessUrl String @default("") // Browserless endpoint URL
+  browserlessApiKey String @default("") // Browserless API key
   email        String   @default("")
   password     String   @default("")
   webhookUrl   String   @default("")

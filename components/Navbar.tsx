@@ -30,6 +30,11 @@ export default function Navbar() {
                             Settings
                         </Link>
                     </li>
+                    <li>
+                        <Link href="/docs" className={isActive('/docs') ? 'active' : ''}>
+                            Docs
+                        </Link>
+                    </li>
                 </ul>
             </div>
         </div>
