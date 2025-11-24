@@ -1,0 +1,42 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Settings {
+  id           Int      @id @default(1)
+  n8nUrl       String   @default("")
+  n8nApiKey    String   @default("") // New API Key field
+  email        String   @default("")
+  password     String   @default("")
+  webhookUrl   String   @default("")
+  scheduleCron String   @default("") // e.g., "0 * * * *" for hourly
+  updatedAt    DateTime @updatedAt
+}
+
+model Screenshot {
+  id         String   @id @default(uuid())
+  workflowId String
+  base64Data String // Storing base64 directly for simplicity in this local app
+  createdAt  DateTime @default(now())
+}
+
+model Workflow {
+  id            String   @id
+  name          String
+  active        Boolean
+  nodesCount    Int
+  triggersCount Int
+  nodeTypes     String // Stored as JSON string
+  tags          String // Stored as JSON string
+  lastSyncedAt  DateTime @default(now())
+  createdAt     DateTime?
+  updatedAt     DateTime?
+}
