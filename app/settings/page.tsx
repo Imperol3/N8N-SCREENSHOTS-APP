@@ -6,8 +6,6 @@ export default function SettingsPage() {
     const [formData, setFormData] = useState({
         n8nUrl: "",
         n8nApiKey: "",
-        browserlessUrl: "",
-        browserlessApiKey: "",
         email: "",
         password: "",
         webhookUrl: "",
@@ -93,33 +91,6 @@ export default function SettingsPage() {
                         className="input input-bordered w-full"
                         placeholder="n8n_api_..."
                     />
-                    <div className="form-control w-full mb-4">
-                        <label className="label">
-                            <span className="label-text">Browserless URL</span>
-                        </label>
-                        <input
-                            type="url"
-                            name="browserlessUrl"
-                            value={formData.browserlessUrl}
-                            onChange={handleChange}
-                            className="input input-bordered w-full"
-                            placeholder="wss://chrome.browserless.io"
-                            required
-                        />
-                    </div>
-                    <div className="form-control w-full mb-4">
-                        <label className="label">
-                            <span className="label-text">Browserless API Key</span>
-                        </label>
-                        <input
-                            type="text"
-                            name="browserlessApiKey"
-                            value={formData.browserlessApiKey}
-                            onChange={handleChange}
-                            className="input input-bordered w-full"
-                            placeholder="your_api_key"
-                        />
-                    </div>
                     <label className="label">
                         <span className="label-text-alt">Generate from n8n Settings → API</span>
                     </label>

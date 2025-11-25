@@ -29,14 +29,15 @@ export async function POST(request: Request) {
         });
 
         return Response.json(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Scraper API Error:', error);
-        console.error('Error stack:', error.stack);
+        const err = error as Error;
+        console.error('Error stack:', err.stack);
         console.error('Error details:', JSON.stringify(error, null, 2));
         return Response.json(
             {
-                error: error.message || 'Failed to capture screenshot',
-                details: error.stack || String(error)
+                error: err.message || 'Failed to capture screenshot',
+                details: err.stack || String(error)
             },
             { status: 500 }
         );

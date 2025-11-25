@@ -608,10 +608,32 @@ npm run dev
 ```
 
 **Production** (with PM2):
-```bash
-npm run build
-pm2 start ecosystem.config.js
-```
+
+1. Install PM2 globally:
+   ```bash
+   npm install -g pm2
+   ```
+
+2. Build the application:
+   ```bash
+   npm run build
+   ```
+
+3. Start the application:
+   ```bash
+   pm2 start ecosystem.config.js
+   ```
+
+4. Save the process list (so it restarts on reboot):
+   ```bash
+   pm2 save
+   ```
+
+5. Generate startup script (optional, for auto-start on boot):
+   ```bash
+   pm2 startup
+   # Run the command output by this step
+   ```
 
 **Docker**:
 ```bash

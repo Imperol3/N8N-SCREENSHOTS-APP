@@ -1,5 +1,4 @@
 import puppeteer from 'puppeteer';
-import puppeteerCore from 'puppeteer-core';
 import { db } from './db';
 
 interface ScraperOptions {
@@ -36,7 +35,6 @@ export async function runScraper({
     let browser;
     let isBrowserless = false;
 
-
     if (settings?.browserlessUrl && settings?.browserlessApiKey) {
         // Try to connect to Browserless if configured
         try {
@@ -56,6 +54,8 @@ export async function runScraper({
             });
 
             // Use puppeteer-core for remote browser connections
+            // Note: We need to import puppeteer-core dynamically or ensure it's imported at top
+            const puppeteerCore = require('puppeteer-core');
             browser = await puppeteerCore.connect({
                 browserWSEndpoint: endpoint,
                 protocolTimeout: 60000, // Increase timeout to 60 seconds
@@ -64,9 +64,8 @@ export async function runScraper({
             console.log('[Scraper] Successfully connected to Browserless');
         } catch (browserlessError: any) {
             console.error('[Scraper] Browserless connection failed with details:');
-            console.error('  Error type:', browserlessError.constructor.name);
-            console.error('  Error message:', browserlessError.message);
-            console.error('  Error code:', browserlessError.code);
+            console.error('  Error type:', browserlessError?.constructor?.name);
+            console.error('  Error message:', browserlessError?.message);
             console.warn('[Scraper] Falling back to local Puppeteer');
 
             // Use puppeteer for local browser
@@ -141,6 +140,7 @@ export async function runScraper({
         });
 
         // Trigger Webhook if configured
+        const settings = await db.settings.findFirst();
         if (settings?.webhookUrl) {
             try {
                 await fetch(settings.webhookUrl, {
