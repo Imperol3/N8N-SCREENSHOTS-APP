@@ -115,11 +115,16 @@ export default function WorkflowDetailsPage() {
             <div className="max-w-7xl mx-auto">
 
                 {/* Breadcrumbs */}
-                <div className="text-sm breadcrumbs mb-4">
-                    <ul>
-                        <li><Link href="/">Workflows</Link></li>
-                        <li>{workflow.name}</li>
-                    </ul>
+                <div className="flex justify-between items-center mb-4">
+                    <div className="text-sm breadcrumbs">
+                        <ul>
+                            <li><Link href="/">Workflows</Link></li>
+                            <li>{workflow.name}</li>
+                        </ul>
+                    </div>
+                    <button onClick={() => router.back()} className="btn btn-sm btn-ghost">
+                        ← Back
+                    </button>
                 </div>
 
                 {/* Header Card */}

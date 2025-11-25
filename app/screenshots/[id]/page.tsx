@@ -14,32 +14,40 @@ export default function ScreenshotDetailPage() {
     const params = useParams();
     const router = useRouter();
     const [screenshot, setScreenshot] = useState<Screenshot | null>(null);
+    const [workflowName, setWorkflowName] = useState<string>("");
     const [loading, setLoading] = useState(true);
     const [lightboxOpen, setLightboxOpen] = useState(false);
 
     useEffect(() => {
-        async function fetchScreenshot() {
+        async function fetchData() {
             try {
-                // Note: Ideally we should have an endpoint for a single screenshot
-                // But for now we fetch all and find (optimization needed for large datasets)
+                // Fetch all screenshots (optimization needed later)
                 const res = await fetch(`/api/screenshots`);
                 const screenshots = await res.json();
                 const found = screenshots.find((s: Screenshot) => s.id === params.id);
                 setScreenshot(found || null);
+
+                if (found) {
+                    // Fetch workflows to get name
+                    const wfRes = await fetch('/api/n8n/workflows');
+                    const workflows = await wfRes.json();
+                    const wf = workflows.find((w: any) => w.id === found.workflowId);
+                    if (wf) setWorkflowName(wf.name);
+                }
             } catch (error) {
-                console.error("Failed to fetch screenshot", error);
+                console.error("Failed to fetch data", error);
             } finally {
                 setLoading(false);
             }
         }
-        fetchScreenshot();
+        fetchData();
     }, [params.id]);
 
     function downloadScreenshot() {
         if (!screenshot) return;
         const link = document.createElement("a");
         link.href = `data:image/png;base64,${screenshot.base64Data}`;
-        link.download = `screenshot-${screenshot.workflowId}-${Date.now()}.png`;
+        link.download = `screenshot-${workflowName || screenshot.workflowId}-${Date.now()}.png`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -72,9 +80,18 @@ export default function ScreenshotDetailPage() {
                 <div className="text-sm breadcrumbs mb-4">
                     <ul>
                         <li><Link href="/">Workflows</Link></li>
-                        <li><Link href={`/workflows/${screenshot.workflowId}`}>{screenshot.workflowId}</Link></li>
-                        <li>Screenshot Details</li>
+                        <li><Link href={`/workflows/${screenshot.workflowId}`}>{workflowName || screenshot.workflowId}</Link></li>
+                        <li>Screenshot</li>
                     </ul>
+                </div>
+
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">{workflowName || 'Screenshot Details'}</h1>
+                    <div className="flex gap-2">
+                        <button onClick={downloadScreenshot} className="btn btn-primary btn-sm">
+                            Download
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex flex-col lg:flex-row gap-8">
@@ -83,7 +100,7 @@ export default function ScreenshotDetailPage() {
                     <div className="w-full lg:w-1/3 space-y-4">
                         <div className="card bg-base-100 shadow-xl">
                             <div className="card-body">
-                                <h2 className="card-title">Details</h2>
+                                <h2 className="card-title">Metadata</h2>
                                 <div className="divider my-2"></div>
 
                                 <div className="space-y-4">
@@ -105,12 +122,6 @@ export default function ScreenshotDetailPage() {
                                         <div>{Math.round(screenshot.base64Data.length * 0.75 / 1024)} KB</div>
                                     </div>
                                 </div>
-
-                                <div className="card-actions justify-end mt-6">
-                                    <button onClick={downloadScreenshot} className="btn btn-primary w-full">
-                                        Download Image
-                                    </button>
-                                </div>
                             </div>
                         </div>
 
@@ -118,11 +129,11 @@ export default function ScreenshotDetailPage() {
                             <div className="card-body">
                                 <h2 className="card-title text-sm">Navigation</h2>
                                 <div className="flex flex-col gap-2">
-                                    <Link href={`/workflows/${screenshot.workflowId}`} className="btn btn-outline btn-sm justify-start">
-                                        ← Back to Workflow
-                                    </Link>
+                                    <button onClick={() => router.back()} className="btn btn-outline btn-sm justify-start">
+                                        ← Back
+                                    </button>
                                     <Link href="/screenshots" className="btn btn-ghost btn-sm justify-start">
-                                        ← Back to Gallery
+                                        All Screenshots
                                     </Link>
                                 </div>
                             </div>

@@ -1,6 +1,13 @@
 import { runScraper } from '@/lib/scraper-service';
+import { validateApiKey } from '@/lib/auth';
 
 export async function POST(request: Request) {
+    // Check for API Key
+    const isValid = await validateApiKey(request);
+    if (!isValid) {
+        return Response.json({ error: 'Unauthorized: Invalid API Key' }, { status: 401 });
+    }
+
     try {
         const body = await request.json();
         const { siteUrl, email, password, workflowUrl, workflowId, showBrowser } = body;

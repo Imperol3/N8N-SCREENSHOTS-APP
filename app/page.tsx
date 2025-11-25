@@ -30,12 +30,14 @@ export default function Home() {
 
     // UI State
     const [searchQuery, setSearchQuery] = useState("");
+    const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     // Data State
     const [workflows, setWorkflows] = useState<Workflow[]>([]);
     const [workflowsLoading, setWorkflowsLoading] = useState(false);
     const [screenshotsMap, setScreenshotsMap] = useState<Record<string, Screenshot>>({});
+    const [screenshotCounts, setScreenshotCounts] = useState<Record<string, number>>({});
     const [settings, setSettings] = useState<any>(null);
 
     // Bulk Actions State
@@ -82,14 +84,22 @@ export default function Home() {
             const screenshotsRes = await fetch('/api/screenshots');
             if (screenshotsRes.ok) {
                 const screenshotsData: Screenshot[] = await screenshotsRes.json();
-                // Map latest screenshot per workflow
+
+                // Map latest screenshot per workflow AND count them
                 const map: Record<string, Screenshot> = {};
+                const counts: Record<string, number> = {};
+
                 screenshotsData.forEach(s => {
+                    // Update latest map
                     if (!map[s.workflowId] || new Date(s.createdAt) > new Date(map[s.workflowId].createdAt)) {
                         map[s.workflowId] = s;
                     }
+                    // Update counts
+                    counts[s.workflowId] = (counts[s.workflowId] || 0) + 1;
                 });
+
                 setScreenshotsMap(map);
+                setScreenshotCounts(counts);
             }
 
         } catch (error) {
@@ -121,6 +131,16 @@ export default function Home() {
             newSelected.delete(id);
         }
         setSelectedWorkflows(newSelected);
+    };
+
+    const handleTagToggle = (tagName: string) => {
+        const newTags = new Set(selectedTags);
+        if (newTags.has(tagName)) {
+            newTags.delete(tagName);
+        } else {
+            newTags.add(tagName);
+        }
+        setSelectedTags(newTags);
     };
 
     const handleBulkCapture = async () => {
@@ -197,12 +217,25 @@ export default function Home() {
 
     // --- Derived State ---
 
+    const allTags = useMemo(() => {
+        const tags = new Set<string>();
+        workflows.forEach(wf => {
+            wf.tags?.forEach(t => tags.add(t.name));
+        });
+        return Array.from(tags).sort();
+    }, [workflows]);
+
     const filteredWorkflows = useMemo(() => {
-        return workflows.filter(wf =>
-            wf.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            wf.id.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }, [workflows, searchQuery]);
+        return workflows.filter(wf => {
+            const matchesSearch = wf.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                wf.id.toLowerCase().includes(searchQuery.toLowerCase());
+
+            const matchesTags = selectedTags.size === 0 ||
+                (wf.tags && wf.tags.some(t => selectedTags.has(t.name)));
+
+            return matchesSearch && matchesTags;
+        });
+    }, [workflows, searchQuery, selectedTags]);
 
     const sortedWorkflows = useMemo(() => {
         return [...filteredWorkflows].sort((a, b) => {
@@ -259,16 +292,43 @@ export default function Home() {
             <div className="max-w-7xl mx-auto bg-base-100 rounded-box shadow-xl overflow-hidden">
 
                 {/* Toolbar */}
-                <div className="p-4 border-b border-base-200 flex flex-col lg:flex-row justify-between items-center gap-4 bg-base-100 sticky top-0 z-10">
-                    <div className="flex items-center gap-4 w-full lg:w-auto">
-                        <h2 className="text-2xl font-bold">Workflows</h2>
-                        <input
-                            type="text"
-                            placeholder="Search..."
-                            className="input input-bordered input-sm w-full max-w-xs"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+                <div className="p-4 border-b border-base-200 flex flex-col lg:flex-row justify-between items-center gap-4 bg-base-100 sticky top-0 z-10 shadow-sm">
+                    <div className="flex flex-col gap-2 w-full lg:w-auto flex-1 mr-4">
+                        <div className="flex items-center gap-4">
+                            <h2 className="text-2xl font-bold">Workflows</h2>
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                className="input input-bordered input-sm w-full max-w-xs"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+                        {/* Tag Filter */}
+                        {allTags.length > 0 && (
+                            <div className="collapse collapse-arrow bg-base-200 rounded-box mt-2">
+                                <input type="checkbox" />
+                                <div className="collapse-title text-sm font-medium py-2 min-h-0">
+                                    Filter by Tags ({selectedTags.size > 0 ? `${selectedTags.size} selected` : 'All'})
+                                </div>
+                                <div className="collapse-content">
+                                    <div className="flex flex-wrap gap-1 pt-2 max-h-32 overflow-y-auto">
+                                        {allTags.map(tag => (
+                                            <button
+                                                key={tag}
+                                                onClick={() => handleTagToggle(tag)}
+                                                className={`badge badge-sm cursor-pointer hover:scale-105 transition-transform ${selectedTags.has(tag) ? 'badge-primary' : 'badge-outline bg-base-100'}`}
+                                            >
+                                                {tag}
+                                            </button>
+                                        ))}
+                                        {selectedTags.size > 0 && (
+                                            <button onClick={() => setSelectedTags(new Set())} className="badge badge-sm badge-error badge-outline cursor-pointer">Clear All</button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -316,7 +376,7 @@ export default function Home() {
                                     </label>
                                 </th>
                                 <th className="cursor-pointer hover:bg-base-200" onClick={() => setSortField('name')}>Name {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
-                                <th>Nodes</th>
+                                <th>Nodes / Screenshots</th>
                                 <th>Status</th>
                                 <th className="cursor-pointer hover:bg-base-200" onClick={() => setSortField('updatedAt')}>Updated {sortField === 'updatedAt' && (sortOrder === 'asc' ? '↑' : '↓')}</th>
                                 <th>Last Screenshot</th>
@@ -331,6 +391,7 @@ export default function Home() {
                             ) : (
                                 sortedWorkflows.map((wf) => {
                                     const lastScreenshot = screenshotsMap[wf.id];
+                                    const count = screenshotCounts[wf.id] || 0;
                                     return (
                                         <tr key={wf.id} className="hover group">
                                             <td>
@@ -346,9 +407,21 @@ export default function Home() {
                                             <td className="cursor-pointer" onClick={() => router.push(`/workflows/${wf.id}`)}>
                                                 <div className="font-bold">{wf.name}</div>
                                                 <div className="text-xs opacity-50 font-mono">{wf.id}</div>
+                                                {wf.tags && wf.tags.length > 0 && (
+                                                    <div className="flex gap-1 mt-1">
+                                                        {wf.tags.map(t => (
+                                                            <span key={t.id} className="badge badge-xs badge-ghost opacity-70">{t.name}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="cursor-pointer" onClick={() => router.push(`/workflows/${wf.id}`)}>
-                                                <div className="badge badge-ghost">{wf.nodesCount}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="badge badge-ghost" title="Node Count">{wf.nodesCount} nodes</div>
+                                                    <div className={`badge ${count > 0 ? 'badge-secondary' : 'badge-ghost opacity-50'}`} title="Screenshot Count">
+                                                        {count} 📸
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="cursor-pointer" onClick={() => router.push(`/workflows/${wf.id}`)}>
                                                 {wf.active ? <span className="badge badge-success badge-xs gap-1">Active</span> : <span className="badge badge-ghost badge-xs">Inactive</span>}

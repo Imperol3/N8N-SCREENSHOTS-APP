@@ -12,21 +12,35 @@ interface Screenshot {
 
 export default function ScreenshotsPage() {
     const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+    const [workflowNames, setWorkflowNames] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        async function fetchScreenshots() {
+        async function fetchData() {
             try {
-                const res = await fetch("/api/screenshots");
-                const data = await res.json();
-                setScreenshots(data);
+                const [screenshotsRes, workflowsRes] = await Promise.all([
+                    fetch("/api/screenshots"),
+                    fetch("/api/n8n/workflows")
+                ]);
+
+                const screenshotsData = await screenshotsRes.json();
+                const workflowsData = await workflowsRes.json();
+
+                setScreenshots(screenshotsData);
+
+                const names: Record<string, string> = {};
+                workflowsData.forEach((w: any) => {
+                    names[w.id] = w.name;
+                });
+                setWorkflowNames(names);
+
             } catch (error) {
-                console.error("Failed to fetch screenshots", error);
+                console.error("Failed to fetch data", error);
             } finally {
                 setLoading(false);
             }
         }
-        fetchScreenshots();
+        fetchData();
     }, []);
 
     if (loading) {
@@ -61,7 +75,9 @@ export default function ScreenshotsPage() {
                                 />
                             </figure>
                             <div className="card-body">
-                                <h2 className="card-title text-sm">Workflow: {screenshot.workflowId}</h2>
+                                <h2 className="card-title text-sm truncate" title={workflowNames[screenshot.workflowId] || screenshot.workflowId}>
+                                    {workflowNames[screenshot.workflowId] || screenshot.workflowId}
+                                </h2>
                                 <p className="text-xs opacity-70">
                                     {new Date(screenshot.createdAt).toLocaleString()}
                                 </p>

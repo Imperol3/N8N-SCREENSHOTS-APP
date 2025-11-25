@@ -42,3 +42,11 @@ model Workflow {
   createdAt     DateTime?
   updatedAt     DateTime?
 }
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  name      String
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+}
