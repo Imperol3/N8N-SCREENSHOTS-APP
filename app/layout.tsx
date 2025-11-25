@@ -18,6 +18,7 @@ export const metadata: Metadata = {
 };
 
 import Navbar from "@/components/Navbar";
+import { AppProvider } from "@/context/AppContext";
 
 export default function RootLayout({
   children,
@@ -29,10 +30,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="container mx-auto p-4">
-          <Navbar />
-          {children}
-        </div>
+        <AppProvider>
+          <div className="container mx-auto p-4">
+            <Navbar />
+            {children}
+          </div>
+        </AppProvider>
       </body>
     </html>
   );
