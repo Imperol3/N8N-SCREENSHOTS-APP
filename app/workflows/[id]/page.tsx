@@ -41,9 +41,17 @@ export default function WorkflowDetailsPage() {
             setSettings(settingsData);
 
             // Fetch Workflows to find current one
+            // Fetch Workflows to find current one
             const workflowsRes = await fetch('/api/n8n/workflows');
-            const workflowsData: Workflow[] = await workflowsRes.json();
-            const foundWorkflow = workflowsData.find(w => w.id === workflowId);
+            let foundWorkflow = null;
+
+            if (workflowsRes.ok) {
+                const workflowsData = await workflowsRes.json();
+                if (Array.isArray(workflowsData)) {
+                    foundWorkflow = workflowsData.find((w: Workflow) => w.id === workflowId);
+                }
+            }
+
             setWorkflow(foundWorkflow || null);
 
             // Fetch Screenshots

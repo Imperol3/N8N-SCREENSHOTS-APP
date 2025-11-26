@@ -39,6 +39,7 @@ export default function Home() {
     const [screenshotsMap, setScreenshotsMap] = useState<Record<string, Screenshot>>({});
     const [screenshotCounts, setScreenshotCounts] = useState<Record<string, number>>({});
     const [settings, setSettings] = useState<any>(null);
+    const [sessionKey, setSessionKey] = useState<string | null>(null);
 
     // Bulk Actions State
     const [selectedWorkflows, setSelectedWorkflows] = useState<Set<string>>(new Set());
@@ -51,7 +52,7 @@ export default function Home() {
 
     // Manual Capture Form
     const [manualFormData, setManualFormData] = useState({
-        siteUrl: "https://n8n.victorkituku.dev",
+        siteUrl: "",
         email: "",
         password: "",
         workflowUrl: "",
@@ -62,7 +63,27 @@ export default function Home() {
 
     // --- Data Fetching ---
 
+    // 1. Get Session Key on Mount
+    useEffect(() => {
+        const initSession = async () => {
+            try {
+                const res = await fetch('/api/auth/session');
+                if (res.ok) {
+                    const data = await res.json();
+                    setSessionKey(data.apiKey);
+                } else {
+                    console.error('Failed to init session');
+                }
+            } catch (e) {
+                console.error('Session init error', e);
+            }
+        };
+        initSession();
+    }, []);
+
     const fetchWorkflows = useCallback(async (forceRefresh = false) => {
+        if (!sessionKey) return; // Wait for session
+
         setWorkflowsLoading(true);
         try {
             // Fetch Settings
@@ -73,7 +94,10 @@ export default function Home() {
             if (settingsData.n8nApiKey) {
                 // Fetch Workflows
                 const url = forceRefresh ? '/api/n8n/workflows?refresh=true' : '/api/n8n/workflows';
-                const workflowsRes = await fetch(url);
+                const workflowsRes = await fetch(url, {
+                    headers: { 'x-api-key': sessionKey }
+                });
+
                 if (workflowsRes.ok) {
                     const workflowsData = await workflowsRes.json();
                     setWorkflows(workflowsData);
@@ -81,7 +105,10 @@ export default function Home() {
             }
 
             // Fetch Screenshots for mapping
-            const screenshotsRes = await fetch('/api/screenshots');
+            const screenshotsRes = await fetch('/api/screenshots', {
+                headers: { 'x-api-key': sessionKey }
+            });
+
             if (screenshotsRes.ok) {
                 const screenshotsData: Screenshot[] = await screenshotsRes.json();
 
@@ -107,11 +134,13 @@ export default function Home() {
         } finally {
             setWorkflowsLoading(false);
         }
-    }, []);
+    }, [sessionKey]);
 
     useEffect(() => {
-        fetchWorkflows();
-    }, [fetchWorkflows]);
+        if (sessionKey) {
+            fetchWorkflows();
+        }
+    }, [fetchWorkflows, sessionKey]);
 
     // --- Handlers ---
 
@@ -144,7 +173,7 @@ export default function Home() {
     };
 
     const handleBulkCapture = async () => {
-        if (!settings?.n8nUrl || selectedWorkflows.size === 0) return;
+        if (!settings?.n8nUrl || selectedWorkflows.size === 0 || !sessionKey) return;
 
         setIsBulkCapturing(true);
         setBulkProgress({ current: 0, total: selectedWorkflows.size });
@@ -156,9 +185,12 @@ export default function Home() {
             setBulkProgress({ current: i + 1, total: idsToCapture.length });
 
             try {
-                await fetch('/api/scraper', {
+                const res = await fetch('/api/scraper', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': sessionKey
+                    },
                     body: JSON.stringify({
                         siteUrl: settings.n8nUrl,
                         email: settings.email,
@@ -167,6 +199,18 @@ export default function Home() {
                         showBrowser: showBrowser, // Use global setting
                     }),
                 });
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    let errorJson;
+                    try {
+                        errorJson = JSON.parse(errorText);
+                    } catch {
+                        // ignore
+                    }
+                    console.error(`Failed to capture workflow ${workflowId}:`, errorJson || errorText);
+                    continue;
+                }
                 // Small delay to prevent overwhelming
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (error) {
@@ -182,6 +226,8 @@ export default function Home() {
 
     const handleManualCapture = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!sessionKey) return;
+
         setManualLoading(true);
         setManualScreenshot(null);
         setManualResult(null);
@@ -189,13 +235,30 @@ export default function Home() {
         try {
             const res = await fetch("/api/scraper", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": sessionKey
+                },
                 body: JSON.stringify({
                     ...manualFormData,
                     showBrowser: showBrowser // Use global setting
                 }),
             });
-            const data = await res.json();
+
+            let data;
+            const text = await res.text();
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error("Failed to parse response as JSON:", text);
+                setManualResult({ error: "Invalid server response", details: text });
+                return;
+            }
+
+            if (!res.ok) {
+                setManualResult(data);
+                return;
+            }
             if (data.screenshot) {
                 setManualScreenshot(data.screenshot);
             }
@@ -354,7 +417,15 @@ export default function Home() {
                             ↻
                         </button>
 
-                        <button onClick={() => setIsModalOpen(true)} className="btn btn-sm btn-secondary">
+                        <button onClick={() => {
+                            setManualFormData(prev => ({
+                                ...prev,
+                                siteUrl: settings?.n8nUrl || prev.siteUrl,
+                                email: settings?.email || prev.email,
+                                // Don't pre-fill password for security, let backend handle it if empty
+                            }));
+                            setIsModalOpen(true);
+                        }} className="btn btn-sm btn-secondary">
                             + Manual Capture
                         </button>
                     </div>
@@ -458,15 +529,15 @@ export default function Home() {
                         <form onSubmit={handleManualCapture}>
                             <div className="form-control w-full mb-2">
                                 <label className="label"><span className="label-text">n8n Site URL</span></label>
-                                <input type="url" value={manualFormData.siteUrl} onChange={e => setManualFormData({ ...manualFormData, siteUrl: e.target.value })} className="input input-bordered w-full" required />
+                                <input type="url" value={manualFormData.siteUrl} onChange={e => setManualFormData({ ...manualFormData, siteUrl: e.target.value })} className="input input-bordered w-full" placeholder={settings?.n8nUrl} />
                             </div>
                             <div className="form-control w-full mb-2">
-                                <label className="label"><span className="label-text">Email</span></label>
-                                <input type="email" value={manualFormData.email} onChange={e => setManualFormData({ ...manualFormData, email: e.target.value })} className="input input-bordered w-full" required />
+                                <label className="label"><span className="label-text">Email (Optional if saved)</span></label>
+                                <input type="email" value={manualFormData.email} onChange={e => setManualFormData({ ...manualFormData, email: e.target.value })} className="input input-bordered w-full" placeholder={settings?.email} />
                             </div>
                             <div className="form-control w-full mb-2">
-                                <label className="label"><span className="label-text">Password</span></label>
-                                <input type="password" value={manualFormData.password} onChange={e => setManualFormData({ ...manualFormData, password: e.target.value })} className="input input-bordered w-full" required />
+                                <label className="label"><span className="label-text">Password (Optional if saved)</span></label>
+                                <input type="password" value={manualFormData.password} onChange={e => setManualFormData({ ...manualFormData, password: e.target.value })} className="input input-bordered w-full" placeholder="••••••••" />
                             </div>
                             <div className="form-control w-full mb-4">
                                 <label className="label"><span className="label-text">Workflow URL</span></label>

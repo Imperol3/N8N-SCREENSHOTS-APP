@@ -1,5 +1,6 @@
 import { runScraper } from '@/lib/scraper-service';
 import { validateApiKey } from '@/lib/auth';
+import { db } from '@/lib/db';
 
 export async function POST(request: Request) {
     // Check for API Key
@@ -10,11 +11,21 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
-        const { siteUrl, email, password, workflowUrl, workflowId, showBrowser } = body;
+        let { siteUrl, email, password, workflowUrl, workflowId, showBrowser } = body;
+
+        // Fetch settings if credentials are missing
+        if (!siteUrl || !email || !password) {
+            const settings = await db.settings.findFirst();
+            if (settings) {
+                siteUrl = siteUrl || settings.n8nUrl;
+                email = email || settings.email;
+                password = password || settings.password;
+            }
+        }
 
         if (!siteUrl || !email || !password) {
             return Response.json(
-                { error: 'Missing required fields: siteUrl, email, password' },
+                { error: 'Missing required fields: siteUrl, email, password (and none saved in settings)' },
                 { status: 400 }
             );
         }
