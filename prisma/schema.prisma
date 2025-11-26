@@ -41,4 +41,14 @@ model Workflow {
   lastSyncedAt  DateTime @default(now())
   createdAt     DateTime?
   updatedAt     DateTime?
+  screenshotStatus String   @default("IDLE") // IDLE, QUEUED, PROCESSING, COMPLETED, FAILED
+  lastScreenshotAt DateTime?
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  name      String
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
 }

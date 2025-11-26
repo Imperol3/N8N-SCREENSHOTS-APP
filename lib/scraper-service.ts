@@ -1,5 +1,4 @@
 import puppeteer from 'puppeteer';
-import puppeteerCore from 'puppeteer-core';
 import { db } from './db';
 
 interface ScraperOptions {
@@ -36,7 +35,6 @@ export async function runScraper({
     let browser;
     let isBrowserless = false;
 
-
     if (settings?.browserlessUrl && settings?.browserlessApiKey) {
         // Try to connect to Browserless if configured
         try {
@@ -56,6 +54,8 @@ export async function runScraper({
             });
 
             // Use puppeteer-core for remote browser connections
+            // Note: We need to import puppeteer-core dynamically or ensure it's imported at top
+            const puppeteerCore = require('puppeteer-core');
             browser = await puppeteerCore.connect({
                 browserWSEndpoint: endpoint,
                 protocolTimeout: 60000, // Increase timeout to 60 seconds
@@ -64,9 +64,8 @@ export async function runScraper({
             console.log('[Scraper] Successfully connected to Browserless');
         } catch (browserlessError: any) {
             console.error('[Scraper] Browserless connection failed with details:');
-            console.error('  Error type:', browserlessError.constructor.name);
-            console.error('  Error message:', browserlessError.message);
-            console.error('  Error code:', browserlessError.code);
+            console.error('  Error type:', browserlessError?.constructor?.name);
+            console.error('  Error message:', browserlessError?.message);
             console.warn('[Scraper] Falling back to local Puppeteer');
 
             // Use puppeteer for local browser
@@ -89,29 +88,37 @@ export async function runScraper({
 
     try {
         const page = await browser.newPage();
+        console.log('[Scraper] New page created');
+
         await page.setViewport({
             width: 1920,
             height: 1080,
             deviceScaleFactor: 2,
         });
 
+        console.log(`[Scraper] Navigating to ${siteUrl}`);
         await page.goto(siteUrl, { waitUntil: 'networkidle2' });
+        console.log('[Scraper] Navigation complete');
 
         // Login
+        console.log('[Scraper] Waiting for login form');
         await page.waitForSelector('input[name="emailOrLdapLoginId"]');
         await page.type('input[name="emailOrLdapLoginId"]', email);
 
         await page.waitForSelector('input[name="password"]');
         await page.type('input[name="password"]', password);
 
+        console.log('[Scraper] Submitting login form');
         try {
             await page.waitForSelector('[data-test-id="form-submit-button"]');
             await page.click('[data-test-id="form-submit-button"]');
         } catch {
+            console.log('[Scraper] Using fallback submit button');
             await page.click('button[type="submit"]');
         }
 
         // Wait for navigation
+        console.log('[Scraper] Waiting for navigation after login');
         if (showBrowser) {
             try {
                 await page.waitForNetworkIdle({ timeout: 10000 });
@@ -121,15 +128,21 @@ export async function runScraper({
         } else {
             await page.waitForNavigation({ waitUntil: 'networkidle2' });
         }
+        console.log('[Scraper] Login navigation complete');
 
         // Go to Workflow
+        console.log(`[Scraper] Navigating to workflow: ${targetUrl}`);
         await page.goto(targetUrl, { waitUntil: 'networkidle2' });
+        console.log('[Scraper] Workflow page loaded');
 
         // Wait for canvas/elements to load
+        console.log('[Scraper] Waiting 5s for canvas to render');
         await new Promise((r) => setTimeout(r, 5000));
 
+        console.log('[Scraper] Taking screenshot');
         const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
         const pageTitle = await page.title();
+        console.log(`[Scraper] Screenshot taken. Title: ${pageTitle}`);
 
         // Save to DB
         const finalWorkflowId = workflowId || (targetUrl.split('/').pop() || 'unknown');
@@ -139,8 +152,10 @@ export async function runScraper({
                 base64Data: screenshotBuffer,
             },
         });
+        console.log(`[Scraper] Screenshot saved to DB with ID: ${savedRecord.id}`);
 
         // Trigger Webhook if configured
+        const settings = await db.settings.findFirst();
         if (settings?.webhookUrl) {
             try {
                 await fetch(settings.webhookUrl, {

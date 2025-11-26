@@ -47,15 +47,33 @@ async function updateSchedule() {
                     return;
                 }
 
-                console.log('Scraping...');
+                // Fetch all workflows first
+                const { fetchWorkflows } = await import('./n8n-client');
+                console.log('Fetching workflows list...');
+                const workflows = await fetchWorkflows(settings.n8nUrl, settings.n8nApiKey || '');
+                console.log(`Found ${workflows.length} workflows to screenshot.`);
 
-                await runScraper({
-                    siteUrl: settings.n8nUrl,
-                    email: settings.email,
-                    password: settings.password,
-                    workflowUrl: settings.n8nUrl + '/workflows',
-                    showBrowser: false,
-                });
+                for (let i = 0; i < workflows.length; i++) {
+                    const workflow = workflows[i];
+                    console.log(`[${i + 1}/${workflows.length}] Scraping workflow: ${workflow.name} (${workflow.id})`);
+
+                    try {
+                        await runScraper({
+                            siteUrl: settings.n8nUrl,
+                            email: settings.email,
+                            password: settings.password,
+                            workflowId: workflow.id,
+                            showBrowser: false,
+                        });
+
+                        // Add a small delay between scrapes to be gentle on the server
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    } catch (err) {
+                        console.error(`Failed to scrape workflow ${workflow.name}:`, err);
+                        // Continue to next workflow even if one fails
+                    }
+                }
+                console.log('Scheduled scrape batch completed.');
 
             } catch (error) {
                 console.error('Scheduled scrape failed:', error);
