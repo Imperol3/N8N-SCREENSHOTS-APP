@@ -1,34 +1,46 @@
-FROM node:20-slim
+FROM node:20-alpine AS builder
 
-# Install latest chrome dev package and fonts to support major charsets (Chinese, Japanese, Arabic, Hebrew, Thai and a few others)
-# Note: this installs the necessary libs to make the bundled version of Chromium that Puppeteer
-# installs, work.
-RUN apt-get update \
-    && apt-get install -y wget gnupg \
-    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
-    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf libxss1 \
-      --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /app
 
 # Copy package files
+# Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies (only production if possible, but build needs devDeps)
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (including devDependencies like Tailwind/Typescript)
+# This is required for the 'npm run build' step to work.
 RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Build the Next.js app
-RUN npm run build
+# Build the Typescript app
+RUN npx tsc
 
-# Expose port 3000
+# Production image
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Install Chromium
+RUN apk add --no-cache \
+  chromium \
+  nss \
+  freetype \
+  harfbuzz \
+  ca-certificates \
+  ttf-freefont
+
+COPY package*.json ./
+RUN npm ci --only=production
+
+COPY --from=builder /app/dist ./dist
+
 EXPOSE 3000
-
-# Start the app
-CMD ["npm", "start"]
+CMD ["node", "dist/server.js"]

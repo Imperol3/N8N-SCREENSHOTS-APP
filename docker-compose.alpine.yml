@@ -1,7 +1,0 @@
-version: '3.8'
-
-services:
-  n8n-scraper:
-    build:
-      context: .
-      dockerfile: Dockerfile.alpine
