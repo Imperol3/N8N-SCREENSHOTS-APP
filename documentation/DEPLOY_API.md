@@ -36,3 +36,16 @@ To update the code in the future:
 git pull origin API
 docker-compose up --build -d
 ```
+
+## Deploying on Coolify
+
+Since this app requires specific Docker flags (`shm_size`, `cap_add`) for the browser to run correctly, follow these steps:
+
+1.  **Create New Resource** -> **Project** -> **Production**.
+2.  Select **Git Repository** (Public or Private).
+3.  Enter the Repo URL: `https://github.com/Imperol3/N8N-SCREENSHOTS-APP`.
+4.  **Important:** Change the **Branch** to `API`.
+5.  **Build Pack:** Select **Docker Compose**.
+    *   *Why?* The `docker-compose.yml` file contains critical settings (`shm_size: 1gb`) that prevent the browser from crashing.
+6.  **Deploy.**
+7.  Coolify will automatically detect the port `3000` from the compose file and set up the domain.
