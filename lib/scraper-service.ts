@@ -17,10 +17,12 @@ export async function runScraper({
     workflowId,
     showBrowser = false,
 }: ScraperOptions) {
+    const executionId = Math.random().toString(36).substring(7);
+    console.log(`[Scraper ${executionId}] Starting scraper for ${siteUrl}`);
+
     // Construct target URL
     let targetUrl = workflowUrl;
     if (workflowId) {
-        // Ensure siteUrl doesn't have trailing slash
         const cleanSiteUrl = siteUrl.replace(/\/$/, '');
         targetUrl = `${cleanSiteUrl}/workflow/${workflowId}`;
     }
@@ -29,98 +31,119 @@ export async function runScraper({
         throw new Error("Either workflowUrl or workflowId must be provided");
     }
 
-    // Launch local Puppeteer
-    console.log('[Scraper] Using local Puppeteer');
-    const browser = await puppeteer.launch({
-        args: ['--hide-scrollbars', '--incognito', '--no-sandbox'],
-        headless: !showBrowser,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    });
+    // Initialize Browser
+    let browser;
+    const browserlessUrl = process.env.BROWSERLESS_URL;
+
+    if (browserlessUrl) {
+        const token = process.env.BROWSERLESS_TOKEN;
+        const params = new URLSearchParams();
+        if (token) params.append('token', token);
+        // params.append('--ignore-certificate-errors', 'true'); // Removed as per user request
+        params.append('timeout', '120000');
+
+        const connectionUrl = `${browserlessUrl.replace(/\/$/, '')}?${params.toString()}`;
+
+        console.log(`[Scraper ${executionId}] Connecting to remote Browserless: ${browserlessUrl}`);
+        browser = await puppeteer.connect({
+            browserWSEndpoint: connectionUrl,
+            defaultViewport: null,
+        });
+    } else {
+        // Launch local Puppeteer
+        console.log(`[Scraper ${executionId}] Using local Puppeteer`);
+        browser = await puppeteer.launch({
+            args: ['--hide-scrollbars', '--incognito', '--no-sandbox'],
+            headless: !showBrowser,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        });
+    }
 
     try {
         const page = await browser.newPage();
-        console.log('[Scraper] New page created');
+        page.setDefaultNavigationTimeout(60000);
+        console.log(`[Scraper ${executionId}] New page created`);
 
         await page.setViewport({
-            width: 1920,
-            height: 1080,
-            deviceScaleFactor: 2,
+            width: 1280,
+            height: 800,
         });
 
-        console.log(`[Scraper] Navigating to ${siteUrl}`);
-        await page.goto(siteUrl, { waitUntil: 'networkidle2' });
-        console.log('[Scraper] Navigation complete');
+        console.log(`[Scraper ${executionId}] Navigating to ${siteUrl}`);
+        // Use domcontentloaded for faster initial load
+        await page.goto(siteUrl, { waitUntil: 'domcontentloaded' });
+        console.log(`[Scraper ${executionId}] Navigation complete`);
 
         // Login
-        console.log('[Scraper] Waiting for login form');
+        console.log(`[Scraper ${executionId}] Waiting for login form`);
         await page.waitForSelector('input[name="emailOrLdapLoginId"]');
         await page.type('input[name="emailOrLdapLoginId"]', email);
 
         await page.waitForSelector('input[name="password"]');
         await page.type('input[name="password"]', password);
 
-        console.log('[Scraper] Submitting login form');
+        console.log(`[Scraper ${executionId}] Submitting login form`);
         try {
-            await page.waitForSelector('[data-test-id="form-submit-button"]');
+            // Try the specific n8n test ID first (more reliable)
+            await page.waitForSelector('[data-test-id="form-submit-button"]', { timeout: 5000 });
             await page.click('[data-test-id="form-submit-button"]');
-        } catch {
-            console.log('[Scraper] Using fallback submit button');
+        } catch (e) {
+            // Fallback to generic submit button
+            console.log(`[Scraper ${executionId}] Specific submit button not found, trying generic...`);
+            await page.waitForSelector('button[type="submit"]', { timeout: 5000 });
             await page.click('button[type="submit"]');
         }
 
-        // Wait for navigation
-        console.log('[Scraper] Waiting for navigation after login');
-        if (showBrowser) {
-            try {
-                await page.waitForNetworkIdle({ timeout: 10000 });
-            } catch {
-                console.log('Network idle timeout, proceeding anyway');
-            }
-        } else {
-            await page.waitForNavigation({ waitUntil: 'networkidle2' });
-        }
-        console.log('[Scraper] Login navigation complete');
+        // Wait for navigation after login
+        // NOTE: networkidle2 does NOT work with Browserless for n8n (persistent WebSockets)
+        // Use a fixed wait instead (3s is enough for redirect to start)
+        console.log(`[Scraper ${executionId}] Waiting for login redirect...`);
+        await new Promise(r => setTimeout(r, 3000));
 
         // Go to Workflow
-        console.log(`[Scraper] Navigating to workflow: ${targetUrl}`);
-        // Use domcontentloaded instead of networkidle2 because n8n likely has polling/websockets
-        // that keep the network active, causing networkidle2 to hang/timeout.
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
-        console.log('[Scraper] Workflow page loaded (DOM content)');
+        console.log(`[Scraper ${executionId}] Navigating to workflow: ${targetUrl}`);
+        // Use domcontentloaded for faster workflow page load (networkidle2 hangs on Browserless)
+        await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+        console.log(`[Scraper ${executionId}] Workflow page loaded (networkidle2)`);
 
-        // Smart Wait: Wait for nodes to appear instead of hard sleep
-        console.log('[Scraper] Waiting for workflow canvas (smart wait)...');
-        try {
-            // Wait for at least one node to be rendered
-            await page.waitForSelector('.react-flow__node', { timeout: 15000 });
-            // Give a small buffer for the final render cycle/animations to finish
-            await new Promise((r) => setTimeout(r, 1000));
-        } catch (e) {
-            console.warn('[Scraper] Warning: Timed out waiting for .react-flow__node, proceeding to screenshot anyway');
-        }
+        // Wait for 5 seconds as a safety buffer
+        console.log(`[Scraper ${executionId}] Waiting 5 seconds for canvas to settle...`);
+        await new Promise((r) => setTimeout(r, 5000));
 
-        console.log('[Scraper] Taking screenshot');
+        console.log(`[Scraper ${executionId}] Taking screenshot`);
         const screenshotBuffer = await page.screenshot({ encoding: 'base64' });
         const pageTitle = await page.title();
-        console.log(`[Scraper] Screenshot taken. Title: ${pageTitle}`);
+        console.log(`[Scraper ${executionId}] Screenshot taken. Title: ${pageTitle}`);
 
-        return {
+        // Prepare the response
+        const result = {
             success: true,
             pageTitle,
             screenshot: `data:image/png;base64,${screenshotBuffer}`,
         };
+
+        // Close browser in background (don't wait for it)
+        // This saves 30+ seconds on the API response time
+        browser.close().then(() => {
+            console.log(`[Scraper ${executionId}] Browser closed (background)`);
+        }).catch((err) => {
+            console.warn(`[Scraper ${executionId}] Error closing browser:`, err);
+        });
+
+        // Return immediately
+        return result;
+
     } catch (error) {
-        console.error('Scraper Error:', error);
-        throw error;
-    } finally {
-        // Properly clean up browser connection
-        try {
-            if (browser) {
+        console.error(`[Scraper ${executionId}] Error:`, error);
+        // Only close browser on error (synchronously)
+        if (browser) {
+            try {
                 await browser.close();
-                console.log('[Scraper] Closed local browser');
+                console.log(`[Scraper ${executionId}] Browser closed after error`);
+            } catch (closeErr) {
+                console.warn(`[Scraper ${executionId}] Error closing browser after error:`, closeErr);
             }
-        } catch (closeError) {
-            console.warn('[Scraper] Error during browser cleanup:', closeError);
         }
+        throw error;
     }
 }
